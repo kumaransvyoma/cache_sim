@@ -1,7 +1,7 @@
 #include <iostream>
 #include <bitset>
 using namespace std;
-
+#define vacant -1 
 struct DATASTORE {
     unsigned long* TagSelect;   //selection bit array
     bool *isValid;
@@ -90,12 +90,12 @@ int main() {
         }
         else {
             READ_HIT++;
-            std::cout << "tagStore[index][j].TAG[" << READ_HIT << "] TAG && tagStore[index][j].dataStore.TagSelect[blockoffset]" << ( tagStore[26][0].dataStore.isValid[blockoffset]) <<std::endl;
+            // std::cout << "tagStore[index][j].TAG[" << READ_HIT << "] TAG && tagStore[index][j].dataStore.TagSelect[blockoffset]" << ( tagStore[26][0].dataStore.isValid[blockoffset]) <<std::endl;
         }
         
     }
 
-    std::cout << "  " << tagStore[26][0].TAG << "  " << (TAG && tagStore[index][0].dataStore.TagSelect[blockoffset])<< "  " <<( TAG && tagStore[26][0].dataStore.isValid[blockoffset]) <<std::endl;
+    // std::cout << "  " << tagStore[26][0].TAG << "  " << (TAG && tagStore[index][0].dataStore.TagSelect[blockoffset])<< "  " <<( TAG && tagStore[26][0].dataStore.isValid[blockoffset]) <<std::endl;
 
     // Clean up memory
     // for (unsigned long i = 0; i < NUM_SETS; i++) {
@@ -116,6 +116,67 @@ int main() {
         //         }
         //     }
         // }
+    //     if (CACHE_ASSOC > 1 || data_blocks > 1)
+    // {
+    //     cout << "\n\n===== L2 Address Array contents =====";
+    // }
+    for (unsigned long i = 0; i < NUM_SETS; i++)
+    {
+        cout << "\nset" << dec << i << ":\t";
+        for (unsigned long j = 0; j < CACHE_ASSOC; j++)
+        {
+            for (unsigned long k = 0; k < CACHE_ASSOC; k++)
+            {
+                if (tagStore[i][k].frequency == j)
+                {
+                    if (CACHE_ASSOC > 1 || data_blocks > 1)
+                    {
+                        // for (unsigned long l = 0; l < CACHE_ASSOC; l++)
+                        // {
+                            if (tagStore[i][k].TAG == vacant)
+                            {
+                                cout << "0";
+                            }
+                            else
+                            {
+                                cout << " " << hex << tagStore[i][k].TAG;
+                            }
+                        if (tagStore[i][k].dataStore.isDirty[k] == true)
+                        {
+                            cout << "D ||";
+                        }
+                        else
+                        {
+                            cout << "N ||";
+                        }
+                        
+                        // cout << "\t||";
+                    }
+                    // if (data_blocks >= 1)
+                    // {
+
+                    //     if (tagStore[i][k].TAG == vacant)
+                    //     {
+                    //         cout << "\t0 ";
+                    //     }
+                    //     else
+                    //     {
+                    //         cout << hex << tagStore[i][k].TAG << " ";
+                    //     }
+
+                    //     if (tagStore[i][k].dataStore.isDirty[k] == true)
+                    //     {
+                    //         cout << "D ||\t";
+                    //     }
+                    //     else
+                    //     {
+                    //         cout << "N ||\t";
+                    //     }
+                    // }
+                }
+            }
+        }
+    }
 
     return 0;
 }
