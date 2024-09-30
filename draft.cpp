@@ -204,40 +204,36 @@ void writeToAddress(unsigned long address)
         unsigned long index = (address & INDEX_MASK) >> block_offset_size;
         unsigned long blockoffset = address & BLOCK_OFFSET_MASK;
         writes++;
-    for (unsigned long j = 0; j < ASSOC; j++)
-    {
-        // if (tagStore[index][j].TAG[addrTAG] == TAG && tagStore[index][j].dataStore.TagSelect[sector] == addrTAG && tagStore[index][j].dataStore.isValid[sector] == true)
-        // if (TAG == tagStore[index][j]->TAG)
-        // if (TAG == *(tagStore[index][j].TAG))
-        // {
-        //     // WRITE_HIT++;
-        //     tagStore[j]->dataStore.isValid = false;
-        //     tagStore[j]->dataStore.isDirty = false;
-
-        //     // tagStore[index][j].dataStore.isDirty[sector] = true;
-        //     // resetFrequency(index, tagStore[index][j].frequency);
-        //     return;
-        // }
-            if ((tagStore[index]->TAG[j]) == TAG )
+    // for (unsigned long j = 0; j < ASSOC; j++)
+    // {
+        bool hit = false;
+            for (unsigned long k = 0; k < ASSOC; k++)
+            {       
+            if ((tagStore[index]->TAG[k]) == TAG )
             {
 
                 WRITE_HIT++;
+                hit = true;
                 // resetFrequency(index, tagStore[index][j].frequency);
                 // resetlru(index, *(tagStore[index][j].lru));
                 // hit = true;
                 
-            tagStore[j]->dataStore.isValid = true;
-            tagStore[j]->dataStore.isDirty = true;
+            tagStore[index]->dataStore.isValid = true;
+            tagStore[index]->dataStore.isDirty = true;
+            // hitUpdateLru(index,TAG,k);
+            updatelru(index,TAG);
             break;
             }
-            else {
+            }
+                if(!hit){
                 WRITE_MISS++;
                 // (tagStore[index]->TAG[j]) = TAG;
                 updatelru(index,TAG);
                 // cout << "Trace_file woooooooow:\t"  << (tagStore[index]->TAG[j]) << endl;
-            }
+                }
+            
 
-    }
+    
 
 }
     void readFromAddress(unsigned long address)
@@ -249,27 +245,27 @@ void writeToAddress(unsigned long address)
         Reads++;
         for (unsigned long j = 0; j < ASSOC; j++)
         {
-            // if (tagStore[index][j]->TAG == TAG && tagStore[index][j]->dataStore.isValid[blockoffset])
-            // if (tagStore[index][j].TAG == TAG && tagStore[index][j].dataStore.isValid)
-            if ((tagStore[index]->TAG[j]) == TAG )
+             if ((tagStore[index]->TAG[j]) == TAG )
             {
 
                 READ_HIT++;
-            //     // resetlru(index, tagStore[index][j].lru);
                 hit = true;
                 hitUpdateLru(index, TAG, j);
                 break;
             }
+        }
             // else {
+            if (!hit)
+        {
                 READ_MISS++;
                 // cout << dec <<*(tagStore[index]->lru ) << endl; 
                 updatelru(index,TAG);
                 // (tagStore[maxIndex]->TAG[j]) = TAG;
                 // cout << "Trace_file woooooooow:\t"  << (tagStore[index]->TAG[j]) << endl;
-            
-            
-
         }
+        
+
+        
 
         // if (!hit)
         // {
@@ -298,18 +294,26 @@ void writeToAddress(unsigned long address)
         }
     }
 void updatelru(int index, unsigned tag){
-                    int* maxElementPtr = max_element(tagStore[index]->lru, tagStore[index]->lru + ASSOC);
+                int* maxElementPtr = max_element(tagStore[index]->lru, tagStore[index]->lru + ASSOC);
                 int* minElementPtr = min_element(tagStore[index]->lru, tagStore[index]->lru + ASSOC);
                 int maxIndex = maxElementPtr - tagStore[index]->lru;
+                // cout << "maxindex\n" << minElementPtr;
             // int minIndex = minElementPtr - tagstore[index].lru;
                 int replaced_cell;
-                        if(*minElementPtr < 0){
-            
+        for(int j=0;j<L1_ASSOC;j++){
+            if(tagStore[index]->TAG[j]==tag){
+                hitUpdateLru(index, tag, j);
+                return;
+            }
+
+        }
+            if(*minElementPtr < 0){
             for(int i=0;i<ASSOC;i++){
                 if(tagStore[index]->lru[i]<0){    
                     tagStore[index]->lru[i]=0;
                     tagStore[index]->TAG[i]=tag;
                     replaced_cell = i;
+                    // cout << "lru\t" << tagStore[index]->lru  ;
                     break;
                 }
             }
@@ -327,6 +331,7 @@ void updatelru(int index, unsigned tag){
             if(tagStore[index]->lru[j]>=0 && replaced_cell!=j)
                 tagStore[index]->lru[j] = tagStore[index]->lru[j] + 1;
         }
+        
 }
     void CacheStatus()
     {
@@ -347,17 +352,17 @@ void updatelru(int index, unsigned tag){
                         }
                         else
                         {
-                            cout << "[" << hex << tagStore[i]->TAG[j] << "]"   ;
+                            cout << hex << tagStore[i]->TAG[j]   ;
                         }
 
                         // Print the dirty bit
-                        if (tagStore[i]->dataStore.isDirty) // Using [0] assuming first block for simplicity
+                        if (tagStore[i]->dataStore.isDirty == true) // Using [0] assuming first block for simplicity
                         {
-                            cout << " D ||";
+                            cout << " D ";
                         }
                         else
                         {
-                            cout << " ||";
+                            cout << " ";
                         }
                     
                 
@@ -379,12 +384,13 @@ void updatelru(int index, unsigned tag){
         //         }
         //     cout<<"\n";
         //     }
-        READ_MISS = Reads - READ_HIT;
+        // READ_MISS = Reads - READ_HIT;
+        // WRITE_MISS = writes - WRITE_HIT;
             cout<< dec <<"\nno of reads : "<<Reads
             <<"\nno of read misses : "<<READ_MISS
             <<"\nno of read hits : "<<READ_HIT
             <<"\n\nno of Writes : "<<writes
-            <<"\n\nno of Writes misses : "<<WRITE_MISS;
+            <<"\n\nno of Writes misses : "<<WRITE_MISS << "\n";
     }
 };
 
