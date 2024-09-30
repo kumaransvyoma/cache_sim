@@ -36,7 +36,7 @@ struct TAGSTORE
 {
     long long *TAG; // TAG value
     int *lru;
-    DATASTORE dataStore;
+    DATASTORE *dataStore;
 };
 
 class CACHE
@@ -177,9 +177,14 @@ public:
                 // tagStore[i]->TAG = (unsigned*)malloc(ASSOC * sizeof(long));
                 // tagStore[i]->lru = (unsigned*)malloc(ASSOC * sizeof(long));
                 tagStore[i]->TAG = (long long*)malloc(ASSOC * sizeof(long long));  // Correct: Use long long type for TAG
-                 tagStore[i]->lru = (int*)malloc(ASSOC * sizeof(int));
-                tagStore[i]->dataStore.isValid = false;
-                tagStore[i]->dataStore.isDirty = false;
+                tagStore[i]->lru = (int*)malloc(ASSOC * sizeof(int));
+                tagStore[i]->dataStore = new DATASTORE[ASSOC];  // Allocate array of DATASTORE for each set
+                for (int j = 0; j < ASSOC; j++) {
+                    tagStore[i]->dataStore[j].isValid = false;
+                    tagStore[i]->dataStore[j].isDirty = false;
+                }
+                // tagStore[i]->dataStore.isValid = false;
+                // tagStore[i]->dataStore.isDirty = false;
                 fill(tagStore[i]->lru, tagStore[i]->lru + ASSOC, -1);
             }
 
@@ -218,17 +223,19 @@ void writeToAddress(unsigned long address)
                 // resetlru(index, *(tagStore[index][j].lru));
                 // hit = true;
                 
-            tagStore[index]->dataStore.isValid = true;
-            tagStore[index]->dataStore.isDirty = true;
+            tagStore[index]->dataStore[k].isValid = true;
+            tagStore[index]->dataStore[k].isDirty = true;
             // hitUpdateLru(index,TAG,k);
-            updatelru(index,TAG);
+            updatelru(index,TAG,true);
             break;
             }
             }
                 if(!hit){
                 WRITE_MISS++;
                 // (tagStore[index]->TAG[j]) = TAG;
-                updatelru(index,TAG);
+                updatelru(index,TAG,true);
+            // tagStore[index]->dataStore[k].isValid = true;
+            // tagStore[index]->dataStore[k].isDirty = true;
                 // cout << "Trace_file woooooooow:\t"  << (tagStore[index]->TAG[j]) << endl;
                 }
             
@@ -251,6 +258,8 @@ void writeToAddress(unsigned long address)
                 READ_HIT++;
                 hit = true;
                 hitUpdateLru(index, TAG, j);
+                // tagStore[index]->dataStore[k].isValid = true;
+                // tagStore[index]->dataStore[k].isDirty = false;
                 break;
             }
         }
@@ -258,8 +267,10 @@ void writeToAddress(unsigned long address)
             if (!hit)
         {
                 READ_MISS++;
+                
                 // cout << dec <<*(tagStore[index]->lru ) << endl; 
-                updatelru(index,TAG);
+                updatelru(index,TAG,false);
+
                 // (tagStore[maxIndex]->TAG[j]) = TAG;
                 // cout << "Trace_file woooooooow:\t"  << (tagStore[index]->TAG[j]) << endl;
         }
@@ -293,7 +304,7 @@ void writeToAddress(unsigned long address)
                 tagStore[index]->lru[j] = tagStore[index]->lru[j] + 1;
         }
     }
-void updatelru(int index, unsigned tag){
+void updatelru(int index, unsigned tag,bool write){
                 int* maxElementPtr = max_element(tagStore[index]->lru, tagStore[index]->lru + ASSOC);
                 int* minElementPtr = min_element(tagStore[index]->lru, tagStore[index]->lru + ASSOC);
                 int maxIndex = maxElementPtr - tagStore[index]->lru;
@@ -324,6 +335,13 @@ void updatelru(int index, unsigned tag){
             // cout<<"Inside after cache"<<endl;
             tagStore[index]->lru[maxIndex]=0;
             tagStore[index]->TAG[maxIndex]=tag;
+            if(write){
+            tagStore[index]->dataStore[maxIndex].isValid = true;
+            tagStore[index]->dataStore[maxIndex].isDirty = true;
+            }
+            if(write ==false){
+                tagStore[index]->dataStore[maxIndex].isDirty = false;
+            }
             replaced_cell =maxIndex;
         }
 
@@ -356,13 +374,13 @@ void updatelru(int index, unsigned tag){
                         }
 
                         // Print the dirty bit
-                        if (tagStore[i]->dataStore.isDirty == true) // Using [0] assuming first block for simplicity
+                        if (tagStore[i]->dataStore[j].isDirty == true) // Using [0] assuming first block for simplicity
                         {
                             cout << " D ";
                         }
-                        else
+                        if(tagStore[i]->dataStore[j].isDirty == false)
                         {
-                            cout << " ";
+                            cout << " \t";
                         }
                     
                 
@@ -402,12 +420,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    L1_SIZE = strtoul(argv[1], nullptr, 10);
-    L1_ASSOC = strtoul(argv[2], nullptr, 10);
-    L1_BLOCKSIZE = strtoul(argv[3], nullptr, 10);
-    VC_NUM_BLOCKS = strtoul(argv[4], nullptr, 10);
-    L2_SIZE = strtoul(argv[5], nullptr, 10);
-    L2_ASSOC = strtoul(argv[6], nullptr, 10);
+    L1_SIZE = strtoul(argv[1], 0, 10);
+    L1_ASSOC = strtoul(argv[2], 0, 10);
+    L1_BLOCKSIZE = strtoul(argv[3], 0, 10);
+    L2_BLOCKSIZE = L1_BLOCKSIZE;
+    VC_NUM_BLOCKS = strtoul(argv[4], 0, 10);
+    L2_SIZE = strtoul(argv[5], 0, 10);
+    L2_ASSOC = strtoul(argv[6], 0, 10);
     Trace_file = argv[7];
 
     cout << "===== Simulator configuration =====" << endl;
@@ -418,8 +437,10 @@ int main(int argc, char *argv[])
     cout << "L2_SIZE:\t" << L2_SIZE << endl;
     cout << "L2_ASSOC:\t" << L2_ASSOC << endl;
     cout << "Trace_file:\t" << Trace_file << endl;
-
+    // VC_SIZE=VC_NUM_BLOCKS * L1_BLOCKSIZE;
     CACHE L1;
+    CACHE VC;
+    CACHE L2;
 
     // if (L2_SIZE != 0 && VC_NUM_BLOCKS != 0)
     // {
