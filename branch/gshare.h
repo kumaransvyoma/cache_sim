@@ -38,24 +38,26 @@ class gshare
     }
     
     void update_bht(unsigned long address,char predict,bool taken){
+        // std::cout << "\naddress: " << std::bitset<32>(address) << std::endl;
         m_bits = (address>>2) & (1<<value_m)-1;
-        // std::cout << "\nm_bits: " << std::bitset<9>(m_bits) << std::endl;
+        // std::cout << "m_bits: " << std::bitset<5>(m_bits) << std::endl;
 
         n_bits = m_bits >> (value_m - value_n);
-        // std::cout << "n_bits: " << std::bitset<3>(n_bits) << std::endl;
+        // std::cout << "n_bits: " << std::bitset<2>(n_bits) << std::endl;
         // int tp = bht[index] ;
 
         
-        // std::cout <<"gbh value"<<std::bitset<3>(gbh) << std::endl; 
+        // std::cout <<"gbh value"<<std::bitset<2>(gbh) << std::endl; 
         xor_value=n_bits ^ gbh;
-        // std::cout << "XOR result: " << std::bitset<3>(xor_value) << std::endl;
+        // std::cout << "XOR result: " << std::bitset<2>(xor_value) << std::endl;
 
         lower_bits = m_bits & ((1 << (value_m - value_n)) - 1);
-        // std::cout << "Lower bits: " << std::bitset<6>(lower_bits) << std::endl;
+        // std::cout << "Lower bits: " << std::bitset<3>(lower_bits) << std::endl;
 
         index = (xor_value << (value_m - value_n)) | lower_bits;
-        // std::cout << "Final Index: " << std::bitset<9>(index) << std::endl;
-        gbh = ((gbh << 1) | taken) & ((1 << value_n) - 1);
+        // std::cout << "Final Index: " << std::bitset<5>(index) << std::endl;
+        // gbh = ((gbh << 1) | taken) & ((1 << value_n) - 1);
+        gbh = (gbh >> 1) | (taken << (value_n - 1));
         if (predict == 't'){
             if((bht[index]<2 )){
                 miss_predict++;
