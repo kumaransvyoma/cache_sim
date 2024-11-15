@@ -1,12 +1,14 @@
 #include <iostream>
 #include <iomanip>
+#include <string>
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include <string>
+#include <algorithm>
 
 using namespace std;
 
+// Enum for Instruction States
 enum class InstructionState {
     IF, // Instruction Fetch
     ID, // Instruction Decode/Dispatch
@@ -15,134 +17,166 @@ enum class InstructionState {
     WB  // Writeback
 };
 
+// Structure for Instructions
 struct Instruction {
-    int tag;
+    int tag;                    // Unique tag for each instruction
     string pc;
-    int op;
-    InstructionState state;
-    int dest, src1, src2;
-    bool src1Ready, src2Ready;
+    int op;                    // Operation type (0, 1, or 2)
+    InstructionState state;     // Current state of the instruction
+    int dest;                   // Destination register
+    int src1, src2;             // Source registers
+    bool src1Ready, src2Ready;  // Operand readiness
     int IF_start, IF_duration;
     int ID_start, ID_duration;
     int IS_start, IS_duration;
     int EX_start, EX_duration;
     int WB_start, WB_duration;
-
+    
     Instruction(int t, const std::string& p, int type, int d, int s1, int s2)
         : tag(t), pc(p), op(type), dest(d), src1(s1), src2(s2),
           state(InstructionState::IF), src1Ready(false), src2Ready(false) {}
 };
 
-class Register {
-public:
-    bool empty;
-    vector<Instruction> reg;
-
-    Register() : empty(true) {}
+// RMT Structure
+struct RMTEntry {
+    bool valid = false;
+    int tag = -1;
 };
 
+vector<RMTEntry> RMT(32); // Assuming 32 registers
+
+// Global Variables
 int cyclecount = 0;
 int instructionCounter = 0;
-Register DQ;
-std::vector<Instruction> issue_list;
-std::vector<Instruction> execute_list;
-std::vector<Instruction> rob;
-std::vector<Instruction> dispatch_list;
-bool pipeline_empty = true;
+int dispatch_width;
+int scheduling_queue_size;
+std::ifstream fin;
+bool pipeLine_empty = true;
 
-bool Advance_Cycle(ifstream& fin) {
-    // Check if all pipeline stages are empty and the file has reached the end
-    return !(fin.eof() && DQ.empty );
-}
+// Registers & Queues
+vector<Instruction> issue_list;
+vector<Instruction> execute_list;
+vector<Instruction> rob;
+vector<Instruction> dispatch_list;
 
-void Fetch(ifstream& fin) {
-    if (fin.eof() || !DQ.empty) return;
-
-    string line;
-    int fetch_count = 0;
-
-    // Fetch up to 5 instructions
+// Function to Fetch Instructions
+void Fetch(int n) {
+    std::string line;
+    int fetched_count = 0;
     
-    while (getline(fin, line) ) {
-        istringstream iss(line);
-        string pc;
+    if (fin.eof())
+        return;
+    
+    // Fetch up to 'n' instructions
+    while (fetched_count < n && getline(fin, line)) {
+        std::istringstream iss(line);
+        std::string pc;
         int opType, dest, src1, src2;
-        if (!(iss >> pc >> opType >> dest >> src1 >> src2)) {
-            cerr << "Error parsing instruction." << endl;
-            break;
-        }
-
+        
+        if (!(iss >> pc >> opType >> dest >> src1 >> src2))
+            continue;
+        
         int tag = instructionCounter++;
         Instruction instr(tag, pc, opType, dest, src1, src2);
         instr.IF_start = cyclecount;
-        instr.IF_duration = 1;
-        instr.ID_start = cyclecount + 1;
         instr.state = InstructionState::ID;
-
+        
         dispatch_list.push_back(instr);
         rob.push_back(instr);
-        fetch_count++;
-    }
-
-    if (fetch_count > 0) {
-        DQ.empty = false;
-    } else {
-        DQ.empty = true; // No more instructions to fetch
+        fetched_count++;
     }
 }
 
-void PrintDQ() {
-    if (dispatch_list.empty()) {
-        cout << "DQ is empty." << endl;
-        return;
+// Dispatch Stage with Register Renaming
+void Dispatch() {
+    vector<Instruction> temp_list;
+
+    // Collect instructions in the ID state
+    for (auto& instr : dispatch_list) {
+        if (instr.state == InstructionState::ID) {
+            temp_list.push_back(instr);
+        }
     }
 
-    cout << "DQ Register Contents:" << endl;
-    cout << "--------------------------------------------" << endl;
-    cout << left << setw(10) << "Tag" << setw(15) << "PC" << setw(10) << "Op"
-         << setw(10) << "Dest" << setw(10) << "Src1" << setw(10) << "Src2"
-         << setw(10) << "State" << endl;
+    // Sort by tag to maintain program order
+    sort(temp_list.begin(), temp_list.end(), [](const Instruction& a, const Instruction& b) {
+        return a.tag < b.tag;
+    });
 
-    for (const auto& instr : dispatch_list) {
+    // Rename and move to issue list
+    for (auto& instr : temp_list) {
+        instr.src1Ready = (instr.src1 == -1 || !RMT[instr.src1].valid);
+        instr.src2Ready = (instr.src2 == -1 || !RMT[instr.src2].valid);
+
+        if (instr.src1 != -1 && RMT[instr.src1].valid) {
+            instr.src1 = RMT[instr.src1].tag;
+        }
+        if (instr.src2 != -1 && RMT[instr.src2].valid) {
+            instr.src2 = RMT[instr.src2].tag;
+        }
+
+        if (instr.dest != -1) {
+            RMT[instr.dest].valid = true;
+            RMT[instr.dest].tag = instr.tag;
+        }
+
+        instr.state = InstructionState::IS;
+        instr.IS_start = cyclecount;
+        issue_list.push_back(instr);
+    }
+
+    // Remove dispatched instructions
+    dispatch_list.erase(remove_if(dispatch_list.begin(), dispatch_list.end(),
+                                  [](Instruction& instr) {
+                                      return instr.state == InstructionState::IS;
+                                  }), dispatch_list.end());
+}
+
+// Print the Issue List
+void PrintIssueList() {
+    cout << "Issue List Contents:" << endl;
+    cout << "--------------------------------------------" << endl;
+    cout << left << setw(10) << "Tag" << setw(15) << "PC" 
+         << setw(10) << "Op" << setw(10) << "Dest" 
+         << setw(10) << "Src1" << setw(10) << "Src2" << endl;
+    
+    for (const auto& instr : issue_list) {
         cout << left << setw(10) << instr.tag
              << setw(15) << instr.pc
              << setw(10) << instr.op
              << setw(10) << instr.dest
              << setw(10) << instr.src1
-             << setw(10) << instr.src2
-             << setw(10) << static_cast<int>(instr.state) // Print state as integer
-             << endl;
+             << setw(10) << instr.src2 << endl;
     }
-
-    cout << "--------------------------------------------" << endl;
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 4) {
-        cerr << "Usage: " << argv[0] << " <n_value> <s_value> <trace_file>" << endl;
-        return 1;
+// Print RMT
+void PrintRMT() {
+    cout << "Register Mapping Table (RMT) Contents:" << endl;
+    cout << "--------------------------------------------" << endl;
+    cout << left << setw(10) << "Reg" << setw(10) << "Valid" << setw(10) << "Tag" << endl;
+    
+    for (int i = 0; i < RMT.size(); i++) {
+        cout << left << setw(10) << i
+             << setw(10) << RMT[i].valid
+             << setw(10) << (RMT[i].valid ? RMT[i].tag : -1) << endl;
     }
+}
 
-    int n_value = stoi(argv[1]);
-    int s_value = stoi(argv[2]);
-    string trace_file = argv[3];
+int main(int argc, char *argv[]) {
+    dispatch_width = stoi(argv[1]);
+    scheduling_queue_size = stoi(argv[2]);
+    fin.open(argv[3]);
 
-    ifstream fin(trace_file);
-    if (!fin.is_open()) {
-        cerr << "Error opening trace file." << endl;
-        return 1;
-    }
+    Fetch(dispatch_width);
+    Dispatch();
+    PrintIssueList();
+    PrintRMT();
 
-    DQ.empty = true;
+    Fetch(dispatch_width);
+    Dispatch();
+    PrintIssueList();
+    PrintRMT();
 
-    // Main simulation loop
-    while (Advance_Cycle(fin)) {
-        cout << "Cycle: " << cyclecount << endl;
-        Fetch(fin);
-        PrintDQ();
-        cyclecount++;
-    }
-
-    cout << "Simulation complete." << endl;
     return 0;
 }
